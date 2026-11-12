@@ -1,0 +1,17 @@
+De: Banco Aurora - Segurança <atendimento@aurora-seguranca-online.example>
+Para: cliente@email.test
+Assunto: URGENTE: sua conta foi bloqueada
+
+Prezado cliente,
+
+Identificamos uma tentativa de acesso suspeita na sua conta e, por segurança, ela foi BLOQUEADA.
+
+Para evitar o cancelamento definitivo, você precisa confirmar seus dados em até 24 horas.
+Acesse o link abaixo e informe seu CPF, agência e conta, senha do cartão e o código de segurança que chegar por SMS:
+
+http://189.45.12.7/aurora/regularizar-conta
+
+Caso a confirmação não seja feita imediatamente, sua conta será encerrada e o saldo ficará retido.
+
+Atenciosamente,
+Central de Segurança Banco Aurora

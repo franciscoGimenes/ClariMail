@@ -1,0 +1,16 @@
+De: Correios Rastreamento <naoresponda@rastreio-entregas-br.example>
+Para: cliente@email.test
+Assunto: Sua encomenda está retida - pagamento pendente
+
+Olá,
+
+Sua encomenda com o código BR839201744BR está retida no centro de distribuição por falta de pagamento da taxa de importação.
+
+Valor da taxa: R$ 39,90
+
+Para liberar a entrega, pague a taxa via Pix ainda hoje pelo link abaixo. Após o prazo, o objeto será devolvido ao remetente.
+
+https://bit.ly/liberar-encomenda-br
+
+Não responda este e-mail.
+Equipe de Rastreamento

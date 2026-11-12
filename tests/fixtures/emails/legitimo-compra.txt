@@ -1,0 +1,21 @@
+De: Casa Bem-Estar <pedidos@casabemestar.example>
+Para: cliente@email.test
+Assunto: Pedido nº 48213 confirmado
+
+Olá, João!
+
+Recebemos o seu pedido e ele já está sendo separado.
+
+Pedido: nº 48213
+Data: 10/11/2026
+Itens:
+- 1 jogo de lençol casal, algodão - R$ 189,90
+- 2 travesseiros - R$ 119,80
+Total: R$ 309,70 (pago no cartão final 4321, em 3 vezes sem juros)
+
+Previsão de entrega: de 14/11 a 18/11/2026, no endereço cadastrado.
+
+Você pode acompanhar o pedido entrando na sua conta, no nosso site ou aplicativo, em "Meus pedidos". Nós nunca pedimos senha ou dados do cartão por e-mail.
+
+Obrigado pela compra!
+Casa Bem-Estar

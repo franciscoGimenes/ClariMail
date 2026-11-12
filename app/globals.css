@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/*
+ * Tokens de design do ClariMail (ver CLAUDE.md).
+ * Uso: bg-bg, bg-surface, border-border, text-ink, text-ink-soft, bg-accent,
+ * bg-danger-bg text-danger-ink, bg-warning-bg text-warning-ink, bg-safe-bg text-safe-ink...
+ */
+@theme {
+  /* Cores */
+  --color-bg: #f4f5f7;
+  --color-surface: #ffffff;
+  --color-border: #e1e4ea;
+  --color-ink: #0e1525;
+  --color-ink-soft: #3b4458;
+  --color-accent: #2457f5;
+  --color-accent-hover: #1a44cc;
+
+  --color-danger: #d4501c;
+  --color-danger-bg: #fdece4;
+  --color-danger-ink: #9a2e0a;
+
+  --color-warning-bg: #fff4d6;
+  --color-warning-ink: #7a5200;
+
+  --color-safe-bg: #e3f4e8;
+  --color-safe-ink: #1e6b3a;
+
+  /* Fontes (variáveis definidas pelo next/font em app/layout.tsx) */
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Texto base de 18px (1.125rem), respeitando o tamanho escolhido no navegador */
+  --text-base: 1.125rem;
+  --text-base--line-height: 1.6;
+
+  /* Raios: cards 16px, botões 10px */
+  --radius-card: 16px;
+  --radius-button: 10px;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--text-base--line-height);
+}
+
+/* Foco visível e bem marcado para quem navega pelo teclado */
+:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
