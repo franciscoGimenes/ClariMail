@@ -1,0 +1,13 @@
+De: Promoção Sorte Grande <premios@sorte-grande-oficial.example>
+Para: cliente@email.test
+Assunto: PARABÉNS!!! Você foi sorteado e ganhou um carro 0 km
+
+Parabéns!
+
+Você foi sorteado na nossa promoção de aniversário e ganhou um carro 0 km e mais R$ 5.000,00 em dinheiro!
+
+Para resgatar o seu prêmio, basta clicar no link e preencher seus dados com nome completo, CPF e número do cartão de crédito para pagamento da taxa de liberação de R$ 49,90.
+
+http://resgate-premio.example/ganhador
+
+Atenção: o prêmio expira em 48 horas. Não perca essa chance!

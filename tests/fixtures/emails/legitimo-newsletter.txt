@@ -1,0 +1,20 @@
+De: Livraria Ipê <novidades@livrariaipe.example>
+Para: cliente@email.test
+Assunto: Lançamentos de novembro e o clube de leitura do mês
+
+Olá, Maria!
+
+Chegaram os lançamentos de novembro. Separamos alguns destaques:
+
+- "O Jardim das Memórias", novo romance de uma autora nacional
+- Um guia ilustrado de receitas da culinária mineira
+- A nova edição do almanaque de passatempos
+
+O clube de leitura deste mês acontece no dia 20, às 15h, na nossa loja do centro. A entrada é gratuita e não precisa de inscrição.
+
+Você pode ver todos os lançamentos no nosso site: https://www.livrariaipe.example/lancamentos
+
+Um abraço,
+Equipe Livraria Ipê
+
+Você recebe este e-mail porque se cadastrou na nossa lista de novidades. Para deixar de receber, acesse https://www.livrariaipe.example/descadastrar
