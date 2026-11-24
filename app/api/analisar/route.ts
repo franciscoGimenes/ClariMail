@@ -10,6 +10,7 @@ import {
   type MotivoLimite,
   type RespostaLimite,
 } from "@/lib/limiteTextos";
+import { resultadoSchema } from "@/lib/resultado";
 import { validarEntrada } from "@/lib/validacao";
 
 /*
@@ -82,10 +83,12 @@ export async function POST(request: Request) {
 
   try {
     const daIa = await analisarEmail(entrada.texto, modo, resumoParaIa(links));
-    const resultado = {
+    // Junta os indícios dos links; se algo sair do formato, fica só o da IA.
+    const juntado = resultadoSchema.safeParse({
       ...daIa,
       indicios: juntarIndicios(daIa.indicios, links.indicios),
-    };
+    });
+    const resultado = juntado.success ? juntado.data : daIa;
     return Response.json(resultado, {
       headers: {
         "Cache-Control": "no-store",

@@ -8,6 +8,7 @@ import {
   textoRestantes,
 } from "@/lib/limiteTextos";
 import { resultadoSchema } from "@/lib/resultado";
+import { guardarAnaliseEmMemoria } from "@/lib/emailMemoria";
 import { salvarResultado } from "@/lib/resultadoSessao";
 import {
   MAX_CARACTERES,
@@ -104,7 +105,13 @@ export default function EmailForm() {
         return;
       }
 
+      // sessionStorage: só o resultado, sem os trechos (pedaços do e-mail).
       salvarResultado(resultado.data);
+      // Texto e trechos ficam só na memória desta aba, para os destaques.
+      guardarAnaliseEmMemoria(
+        entrada.texto,
+        resultado.data.indicios.map((indicio) => indicio.trecho),
+      );
       router.push("/resultado");
     } catch {
       setAviso(MENSAGEM_FALHA);

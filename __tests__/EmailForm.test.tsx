@@ -245,3 +245,42 @@ test("se não der para consultar o limite, o formulário segue funcionando", asy
   expect(botao()).toHaveProperty("disabled", false);
   expect(screen.queryByText(/Você ainda pode fazer/)).toBeNull();
 });
+
+// ---------------------------------------------------------------------------
+// Privacidade dos trechos destacados (História 5)
+// ---------------------------------------------------------------------------
+
+test("depois da análise: texto e trechos só na memória, nunca no sessionStorage", async () => {
+  const { lerAnaliseEmMemoria, limparAnaliseEmMemoria } = await import("@/lib/emailMemoria");
+  limparAnaliseEmMemoria();
+  const indicio = {
+    titulo: "Pede sua senha",
+    explicacao: "Bancos não pedem senha por e-mail.",
+    gravidade: "critico",
+    trecho: "confirme sua senha agora",
+    origem: "ia",
+  };
+  simularFetch({
+    analisar: async () =>
+      Response.json({ veredito: "phishing", nota: 90, resumo: "Golpe.", indicios: [indicio] }),
+  });
+  render(<EmailForm />);
+  fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
+  fireEvent.click(botao());
+  await waitFor(() => expect(push).toHaveBeenCalledWith("/resultado"));
+
+  // Na memória: o texto e o trecho.
+  expect(lerAnaliseEmMemoria()).toEqual({
+    texto: EMAIL_VALIDO,
+    trechos: ["confirme sua senha agora"],
+  });
+
+  // No sessionStorage: o resultado, mas com o trecho apagado.
+  const salvo = JSON.parse(sessionStorage.getItem("clarimail:resultado")!);
+  expect(salvo.indicios[0]).toEqual({ ...indicio, trecho: null });
+
+  const tudo = (JSON.stringify({ ...sessionStorage }) + JSON.stringify({ ...localStorage }) + document.cookie).toLowerCase();
+  expect(tudo).not.toContain("senha agora");
+  expect(tudo).not.toContain("banco@exemplo.test");
+  expect(push).toHaveBeenCalledWith("/resultado"); // nada do texto na URL
+});

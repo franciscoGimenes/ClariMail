@@ -172,3 +172,142 @@ test("sem indícios, a seção não aparece", () => {
   render(<ResultadoView />);
   expect(screen.queryByRole("region", { name: "O que encontramos" })).toBeNull();
 });
+
+// ---------------------------------------------------------------------------
+// Mensagem analisada com trechos destacados (História 5)
+// ---------------------------------------------------------------------------
+
+describe("Mensagem analisada", () => {
+  const EMAIL = `De: Banco Aurora <aviso@aurora.example>
+Assunto: URGENTE:   sua conta foi bloqueada
+
+Confirme sua SENHA no link http://189.45.12.7/login
+<script>alert("oi")</script>`;
+
+  const comTrecho = (titulo: string, gravidade: string, trecho: string | null) => ({
+    titulo,
+    explicacao: `Explicação de ${titulo}.`,
+    gravidade,
+    trecho,
+    origem: "ia",
+  });
+
+  const INDICIOS = [
+    comTrecho("Cria pressa", "atencao", "urgente: sua conta foi bloqueada"),
+    comTrecho("Pede sua senha", "critico", "confirme sua senha"),
+    comTrecho("Remetente conhecido", "confiavel", "Banco Aurora"),
+    comTrecho("Trecho inventado", "critico", "digite seu PIN"),
+  ];
+
+  beforeEach(async () => {
+    const { limparAnaliseEmMemoria } = await import("@/lib/emailMemoria");
+    limparAnaliseEmMemoria();
+  });
+
+  /** Como no app: sessionStorage sem trechos; texto e trechos só na memória. */
+  async function abrirComTexto() {
+    const { guardarAnaliseEmMemoria } = await import("@/lib/emailMemoria");
+    guardarAnaliseEmMemoria(EMAIL, INDICIOS.map((i) => i.trecho));
+    guardarComIndicios(90, INDICIOS.map((i) => ({ ...i, trecho: null })));
+    render(<ResultadoView />);
+    return screen.getByRole("region", { name: "Mensagem analisada" });
+  }
+
+  test("mostra o texto original com os trechos marcados (crítico e atenção)", async () => {
+    const card = await abrirComTexto();
+    const marcas = card.querySelectorAll("mark");
+    expect([...marcas].map((m) => m.textContent)).toEqual([
+      "URGENTE:   sua conta foi bloqueada",
+      "Confirme sua SENHA",
+    ]);
+    // Quebras de linha preservadas: o texto inteiro está lá, igual.
+    expect(card.querySelector(".whitespace-pre-wrap")!.textContent).toBe(EMAIL);
+  });
+
+  test("cada destaque é um botão com o título do indício no aria-label", async () => {
+    const card = await abrirComTexto();
+    expect(within(card).getByRole("button", { name: "Crítico: Pede sua senha" })).toBeDefined();
+    expect(within(card).getByRole("button", { name: "Atenção: Cria pressa" })).toBeDefined();
+    // "confiavel" não é destacado; trecho inexistente não é marcado.
+    expect(within(card).queryByRole("button", { name: /Remetente conhecido|Trecho inventado/ })).toBeNull();
+  });
+
+  test("HTML e script do e-mail aparecem como texto, nunca como elementos", async () => {
+    const card = await abrirComTexto();
+    expect(card.querySelector("script")).toBeNull();
+    expect(card.textContent).toContain('<script>alert("oi")</script>');
+  });
+
+  test("tem legenda com cor e texto", async () => {
+    const card = await abrirComTexto();
+    const legenda = within(card).getByRole("list", { name: "Legenda dos destaques" });
+    expect(within(legenda).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      "Crítico",
+      "Atenção",
+    ]);
+  });
+
+  test("tocar no destaque leva o foco ao indício na lista e o destaca", async () => {
+    const card = await abrirComTexto();
+    fireEvent.click(within(card).getByRole("button", { name: "Crítico: Pede sua senha" }));
+
+    const lista = screen.getByRole("region", { name: "O que encontramos" });
+    const item = within(lista).getByRole("heading", { name: "Pede sua senha" }).closest("li")!;
+    expect(document.activeElement).toBe(item);
+    expect(item.className).toContain("ring-accent");
+  });
+
+  test("'Ver no e-mail' faz o caminho inverso e só aparece em indício destacado", async () => {
+    await abrirComTexto();
+    const lista = screen.getByRole("region", { name: "O que encontramos" });
+    const links = within(lista).getAllByRole("link", { name: /Ver no e-mail/ });
+    expect(links).toHaveLength(2); // crítico e atenção com trecho encontrado
+
+    const verSenha = within(lista).getByRole("link", { name: "Ver no e-mail: Pede sua senha" });
+    fireEvent.click(verSenha);
+    const destaque = screen.getByRole("button", { name: "Crítico: Pede sua senha" });
+    expect(document.activeElement).toBe(destaque);
+    expect(destaque.className).toContain("ring-accent");
+  });
+
+  test("depois de recarregar (sem o texto na memória), mostra o resultado e explica", () => {
+    guardarComIndicios(90, INDICIOS.map((i) => ({ ...i, trecho: null })));
+    render(<ResultadoView />);
+    const card = screen.getByRole("region", { name: "Mensagem analisada" });
+    expect(card.textContent).toContain("O ClariMail não guarda o seu e-mail");
+    expect(card.querySelector("mark")).toBeNull();
+    // O resultado continua lá, e a lista não oferece "Ver no e-mail".
+    expect(screen.getByRole("region", { name: "O que encontramos" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: /Ver no e-mail/ })).toBeNull();
+  });
+
+  test("nem o texto nem os trechos vão para sessionStorage, localStorage ou URL", async () => {
+    await abrirComTexto();
+    fireEvent.click(screen.getByRole("button", { name: "Crítico: Pede sua senha" }));
+    const tudo = (
+      JSON.stringify({ ...sessionStorage }) +
+      JSON.stringify({ ...localStorage }) +
+      document.cookie +
+      location.href
+    ).toLowerCase();
+    for (const pedaco of ["confirme sua senha", "sua conta foi bloqueada", "189.45.12.7", "banco aurora"]) {
+      expect(tudo).not.toContain(pedaco);
+    }
+  });
+
+  test("memória de outra análise (indícios diferentes) não é usada", async () => {
+    const { guardarAnaliseEmMemoria } = await import("@/lib/emailMemoria");
+    guardarAnaliseEmMemoria("outro e-mail qualquer", ["outro"]);
+    guardarComIndicios(90, INDICIOS.map((i) => ({ ...i, trecho: null })));
+    render(<ResultadoView />);
+    const card = screen.getByRole("region", { name: "Mensagem analisada" });
+    expect(card.textContent).toContain("O ClariMail não guarda o seu e-mail");
+  });
+
+  test("'Analisar outro e-mail' apaga também o texto da memória", async () => {
+    const { lerAnaliseEmMemoria } = await import("@/lib/emailMemoria");
+    await abrirComTexto();
+    fireEvent.click(screen.getByRole("link", { name: "Analisar outro e-mail" }));
+    expect(lerAnaliseEmMemoria()).toBeNull();
+  });
+});

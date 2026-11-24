@@ -7,7 +7,7 @@ Projeto de faculdade da disciplina de Métodos Ágeis (Scrum).
 - **ClariMail**: plataforma web que detecta phishing em e-mails e explica, em linguagem simples, por que a mensagem é perigosa ou segura (IA Explicável).
 - **Público**: pessoas leigas em tecnologia, principalmente adultos mais velhos e idosos.
 - **Tom**: acolhedor, direto e sem jargão técnico. A interface é só em português do Brasil.
-- **Privacidade**: o conteúdo do e-mail é analisado e descartado. **Nunca salvar e nunca logar o texto do e-mail.** Isso vale para banco de dados, arquivos, `console.log`, logs de erro e serviços de terceiros, exceto a chamada de análise ao Google Gemini. No plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos dele, e a interface avisa isso à pessoa perto do botão Analisar.
+- **Privacidade**: o conteúdo do e-mail é analisado e descartado. **Nunca salvar e nunca logar o texto do e-mail.** Isso vale para banco de dados, arquivos, `console.log`, logs de erro e serviços de terceiros, exceto a chamada de análise ao Google Gemini. No navegador, o texto do e-mail e os trechos dos indícios (pedaços do e-mail) ficam **só na memória da aba** (`lib/emailMemoria.ts`), para os trechos destacados; o sessionStorage guarda só o resultado, com os trechos apagados. No plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos dele, e a interface avisa isso à pessoa perto do botão Analisar.
 
 ## Stack
 

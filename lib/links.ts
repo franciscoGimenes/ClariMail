@@ -1,4 +1,10 @@
 import { domainToUnicode } from "node:url";
+import {
+  cortarTrecho,
+  indicioSchema,
+  MAX_INDICIOS,
+  type Indicio,
+} from "@/lib/resultado";
 
 /*
  * Análise dos links do e-mail, feita EM CÓDIGO (sem IA).
@@ -14,21 +20,8 @@ import { domainToUnicode } from "node:url";
 // Tipo do indício
 // ---------------------------------------------------------------------------
 
-/**
- * Igual ao `indicioSchema` da História 4 (lib/resultado.ts na branch
- * feat/explicacao-indicios). Enquanto ela não estiver na main, o tipo fica
- * aqui. Depois do merge: trocar por `Indicio` de "@/lib/resultado".
- */
-export type IndicioLinks = {
-  titulo: string;
-  explicacao: string;
-  gravidade: "critico" | "atencao" | "confiavel";
-  trecho: string | null;
-  origem: "ia" | "links";
-};
-
-export const MAX_INDICIOS = 6;
-const MAX_TRECHO = 120;
+/** Indício dos links: o mesmo `Indicio` da História 4, com origem "links". */
+export type IndicioLinks = Indicio;
 
 // ---------------------------------------------------------------------------
 // Listas
@@ -325,7 +318,7 @@ export function problemasDoLink(link: LinkEncontrado, remetente: string | null):
 export function indicioDoLink(link: LinkAnalisado): IndicioLinks | null {
   const [principal] = link.problemas;
   if (!principal) return null;
-  const trecho = link.texto.slice(0, MAX_TRECHO);
+  const trecho = cortarTrecho(link.texto);
   const base = { trecho, origem: "links" as const };
 
   switch (principal.tipo) {
@@ -384,9 +377,10 @@ export function analisarLinks(texto: string): AnaliseLinks {
     ...link,
     problemas: problemasDoLink(link, remetente),
   }));
+  // Valida com o mesmo schema dos indícios da IA (descarta se algo sair do formato).
   const indicios = links
     .map(indicioDoLink)
-    .filter((i): i is IndicioLinks => i !== null);
+    .filter((i): i is IndicioLinks => i !== null && indicioSchema.safeParse(i).success);
   return { remetente, links, indicios };
 }
 
