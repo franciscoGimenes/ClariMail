@@ -1,4 +1,5 @@
 import { analisarEmail, ErroAnalise, escolherModo } from "@/lib/analisador";
+import { analisarLinks, juntarIndicios, resumoParaIa } from "@/lib/links";
 import {
   ErroConfiguracaoLimite,
   ipDaRequisicao,
@@ -76,8 +77,15 @@ export async function POST(request: Request) {
     return respostaLimite(reserva.motivo);
   }
 
+  // Links analisados em código, sem abrir nenhum deles, ANTES da IA.
+  const links = analisarLinks(entrada.texto);
+
   try {
-    const resultado = await analisarEmail(entrada.texto, modo);
+    const daIa = await analisarEmail(entrada.texto, modo, resumoParaIa(links));
+    const resultado = {
+      ...daIa,
+      indicios: juntarIndicios(daIa.indicios, links.indicios),
+    };
     return Response.json(resultado, {
       headers: {
         "Cache-Control": "no-store",
