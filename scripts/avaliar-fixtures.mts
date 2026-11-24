@@ -51,7 +51,12 @@ for (const [i, arquivo] of arquivos.entries()) {
     console.log(
       `${arquivo.padEnd(26)} nota ${String(r.nota).padStart(3)}  ${r.veredito.padEnd(9)} ${ms} ms`,
     );
-    console.log(`  ${r.resumo}\n`);
+    console.log(`  ${r.resumo}`);
+    for (const i of r.indicios) {
+      console.log(`  - [${i.gravidade}] ${i.titulo}: ${i.explicacao}`);
+      console.log(`    trecho: ${i.trecho === null ? "(nenhum)" : JSON.stringify(i.trecho)}`);
+    }
+    console.log("");
   } catch (erro) {
     const motivo = erro instanceof ErroAnalise ? erro.motivo : "desconhecido";
     console.log(`${arquivo.padEnd(26)} FALHOU (${motivo})\n`);

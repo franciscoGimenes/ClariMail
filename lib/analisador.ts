@@ -7,6 +7,10 @@ import {
 } from "@google/genai";
 import { montarMensagemUsuario, PROMPT_SISTEMA } from "@/lib/prompt";
 import {
+  GRAVIDADES,
+  MAX_INDICIOS,
+  MAX_TRECHO,
+  MIN_INDICIOS_PEDIDOS,
   normalizarResultado,
   respostaModeloSchema,
   VEREDITOS,
@@ -34,11 +38,14 @@ export const MODELO_PADRAO = "";
 export const TIMEOUT_MS = 10_000;
 
 /**
- * A resposta tem três campos curtos (cerca de 150 tokens). A folga cobre o
- * raciocínio interno que alguns modelos Flash fazem antes de responder e
- * que também conta neste limite.
+ * Teto de tokens da resposta: nota, veredito, resumo e até 6 indícios
+ * (título, explicação de até 3 frases e trecho de até 120 caracteres).
+ * Nas fixtures (gemini-3.5-flash-lite, 24/11/2026) a resposta usou de 321 a
+ * 500 tokens com 3 ou 4 indícios, sem raciocínio interno: cerca de 125 tokens
+ * por indício. Com 6 indícios longos, o pior caso fica perto de 1.100.
+ * O teto só limita; tokens não usados não contam na cota do plano gratuito.
  */
-export const MAX_TOKENS_SAIDA = 1024;
+export const MAX_TOKENS_SAIDA = 1536;
 
 export type EscopoLimite = "dia" | "minuto";
 
@@ -101,6 +108,38 @@ export function escolherModelo(
 export const ESQUEMA_RESPOSTA: Schema = {
   type: Type.OBJECT,
   properties: {
+    indicios: {
+      type: Type.ARRAY,
+      minItems: String(MIN_INDICIOS_PEDIDOS),
+      maxItems: String(MAX_INDICIOS),
+      description:
+        "De 2 a 6 sinais encontrados no e-mail, os mais importantes primeiro.",
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          titulo: {
+            type: Type.STRING,
+            description: "Título curto, até 60 caracteres.",
+          },
+          explicacao: {
+            type: Type.STRING,
+            description:
+              "1 a 3 frases simples, em português, falando com 'você', sem termos técnicos.",
+          },
+          gravidade: {
+            type: Type.STRING,
+            enum: [...GRAVIDADES],
+          },
+          trecho: {
+            type: Type.STRING,
+            nullable: true,
+            description: `Cópia exata, letra por letra, de um pedaço do e-mail (até ${MAX_TRECHO} caracteres), ou null.`,
+          },
+        },
+        required: ["titulo", "explicacao", "gravidade", "trecho"],
+        propertyOrdering: ["titulo", "explicacao", "gravidade", "trecho"],
+      },
+    },
     nota: {
       type: Type.INTEGER,
       minimum: 0,
@@ -117,8 +156,9 @@ export const ESQUEMA_RESPOSTA: Schema = {
       description: "1 a 2 frases simples, em português, falando com 'você'.",
     },
   },
-  required: ["nota", "veredito", "resumo"],
-  propertyOrdering: ["nota", "veredito", "resumo"],
+  required: ["indicios", "nota", "veredito", "resumo"],
+  // Os indícios vêm primeiro: o modelo junta as evidências antes de dar a nota.
+  propertyOrdering: ["indicios", "nota", "veredito", "resumo"],
 };
 
 let cliente: GoogleGenAI | null = null;
@@ -182,7 +222,7 @@ async function analisarComGemini(
   // O Gemini respeita o esquema, mas validamos de novo com zod.
   const validado = respostaModeloSchema.safeParse(dados);
   if (!validado.success) throw new ErroAnalise("resposta_invalida");
-  return normalizarResultado(validado.data);
+  return normalizarResultado(validado.data, texto);
 }
 
 /** Reconhece o cancelamento pelo nome, sem depender da classe do erro. */

@@ -18,6 +18,11 @@ import {
 } from "@/components/icons";
 import { nivelPorNota, type Nivel } from "@/lib/nivel";
 import {
+  ordenarIndicios,
+  type Gravidade,
+  type Indicio,
+} from "@/lib/resultado";
+import {
   assinarResultado,
   interpretarResultado,
   lerResultadoBruto,
@@ -155,6 +160,10 @@ export default function ResultadoView() {
         </div>
       </section>
 
+      {resultado.indicios.length > 0 ? (
+        <SecaoIndicios indicios={resultado.indicios} />
+      ) : null}
+
       <section
         aria-labelledby="titulo-o-que-fazer"
         className="rounded-card bg-ink p-6 text-white sm:p-8"
@@ -177,6 +186,72 @@ export default function ResultadoView() {
         oficial da empresa.
       </p>
     </div>
+  );
+}
+
+/** Gravidade: sempre ícone + rótulo de texto + cor, nunca só a cor. */
+export const GRAVIDADE_VISUAL: Record<
+  Gravidade,
+  { rotulo: string; Icone: Icone; selo: string; caixaIcone: string }
+> = {
+  critico: {
+    rotulo: "Crítico",
+    Icone: ShieldAlertIcon,
+    selo: "bg-danger-bg text-danger-ink",
+    caixaIcone: "bg-danger-bg text-danger-ink",
+  },
+  atencao: {
+    rotulo: "Atenção",
+    Icone: AlertIcon,
+    selo: "bg-warning-bg text-warning-ink",
+    caixaIcone: "bg-warning-bg text-warning-ink",
+  },
+  confiavel: {
+    rotulo: "Confiável",
+    Icone: ShieldCheckIcon,
+    selo: "bg-safe-bg text-safe-ink",
+    caixaIcone: "bg-safe-bg text-safe-ink",
+  },
+};
+
+function SecaoIndicios({ indicios }: { indicios: readonly Indicio[] }) {
+  return (
+    <section
+      aria-labelledby="titulo-indicios"
+      className="rounded-card border border-border bg-surface p-6 sm:p-8"
+    >
+      <h2 id="titulo-indicios" className="text-2xl font-semibold text-ink">
+        O que encontramos
+      </h2>
+      <ul className="mt-2 divide-y divide-border">
+        {ordenarIndicios(indicios).map((indicio, i) => {
+          const visual = GRAVIDADE_VISUAL[indicio.gravidade];
+          return (
+            <li key={i} className="flex gap-4 py-5 last:pb-0">
+              <span
+                aria-hidden="true"
+                className={`flex size-11 shrink-0 items-center justify-center rounded-button ${visual.caixaIcone}`}
+              >
+                <visual.Icone className="size-6" />
+              </span>
+              <div className="min-w-0">
+                <p
+                  className={`inline-flex items-center rounded-full px-3 py-0.5 text-base font-semibold ${visual.selo}`}
+                >
+                  {visual.rotulo}
+                </p>
+                <h3 className="mt-2 text-lg font-bold text-ink">
+                  {indicio.titulo}
+                </h3>
+                <p className="mt-1 text-base text-ink-soft">
+                  {indicio.explicacao}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
