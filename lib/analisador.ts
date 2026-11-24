@@ -50,6 +50,8 @@ export class ErroAnalise extends Error {
       | "recusa"
       | "resposta_invalida"
       | "api",
+    /** Código HTTP devolvido pelo Gemini, quando houver (ex.: 503). */
+    public readonly statusHttp?: number,
   ) {
     super(`Falha na análise: ${motivo}`);
     this.name = "ErroAnalise";
@@ -121,7 +123,10 @@ export function _reiniciarCliente(): void {
   cliente = null;
 }
 
-async function analisarComGemini(texto: string): Promise<Resultado> {
+async function analisarComGemini(
+  texto: string,
+  sinal: AbortSignal,
+): Promise<Resultado> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new ErroAnalise("configuracao");
   const modelo = escolherModelo();
@@ -135,7 +140,7 @@ async function analisarComGemini(texto: string): Promise<Resultado> {
       responseSchema: ESQUEMA_RESPOSTA,
       temperature: 0.2,
       maxOutputTokens: MAX_TOKENS_SAIDA,
-      abortSignal: AbortSignal.timeout(TIMEOUT_MS),
+      abortSignal: sinal,
     },
   });
 
@@ -164,11 +169,13 @@ async function analisarComGemini(texto: string): Promise<Resultado> {
   return normalizarResultado(validado.data);
 }
 
+/** Reconhece o cancelamento pelo nome, sem depender da classe do erro. */
 function ehTimeout(erro: unknown): boolean {
-  return (
-    erro instanceof Error &&
-    (erro.name === "TimeoutError" || erro.name === "AbortError")
-  );
+  const nome =
+    typeof erro === "object" && erro !== null && "name" in erro
+      ? String(erro.name)
+      : "";
+  return nome === "TimeoutError" || nome === "AbortError";
 }
 
 export async function analisarEmail(
@@ -177,16 +184,19 @@ export async function analisarEmail(
 ): Promise<Resultado> {
   if (modo === "simulacao") return analisarSimulado(texto);
 
+  const sinal = AbortSignal.timeout(TIMEOUT_MS);
   try {
-    return await analisarComGemini(texto);
+    return await analisarComGemini(texto, sinal);
   } catch (erro) {
     if (erro instanceof ErroAnalise) throw erro;
-    if (ehTimeout(erro)) throw new ErroAnalise("timeout");
+    // Se os 10 s estouraram, é timeout, qualquer que seja o formato do erro
+    // (o cancelamento pode chegar no meio da leitura da resposta).
+    if (sinal.aborted || ehTimeout(erro)) throw new ErroAnalise("timeout");
     if (erro instanceof ApiError) {
       if (erro.status === 429 || /RESOURCE_EXHAUSTED/.test(erro.message)) {
-        throw new ErroAnalise("limite");
+        throw new ErroAnalise("limite", erro.status);
       }
-      throw new ErroAnalise("api");
+      throw new ErroAnalise("api", erro.status);
     }
     if (erro instanceof Error && /RESOURCE_EXHAUSTED/.test(erro.message)) {
       throw new ErroAnalise("limite");

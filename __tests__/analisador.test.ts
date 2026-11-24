@@ -187,6 +187,18 @@ describe("analisarEmail com o Gemini (cliente mockado)", () => {
     expect(await motivoDoErro()).toBe("timeout");
   });
 
+  test("se os 10 s estouraram, é timeout mesmo com erro de outro formato", async () => {
+    const controle = new AbortController();
+    controle.abort();
+    const espiao = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(controle.signal);
+    generateContent.mockRejectedValue(new TypeError("terminated"));
+    expect(await motivoDoErro()).toBe("timeout");
+    expect(espiao).toHaveBeenCalledWith(TIMEOUT_MS);
+    espiao.mockRestore();
+  });
+
   test("429 vira limite", async () => {
     generateContent.mockRejectedValue(
       new ApiError({ status: 429, message: "Quota exceeded" }),
@@ -244,7 +256,9 @@ describe("rota POST /api/analisar", () => {
       erro: "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.",
     });
     // O log registra só o motivo, nunca o texto do e-mail.
-    expect(erroLog).toHaveBeenCalledWith("[analisar] falha na análise: limite");
+    expect(erroLog).toHaveBeenCalledWith(
+      "[analisar] falha na análise: limite (HTTP 429)",
+    );
     expect(JSON.stringify(erroLog.mock.calls)).not.toContain(MARCADOR);
     erroLog.mockRestore();
   });

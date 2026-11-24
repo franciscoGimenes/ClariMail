@@ -35,7 +35,14 @@ console.log(
   `Modo: ${modo}${modo === "gemini" ? ` (${process.env.GEMINI_MODEL || MODELO_PADRAO || "sem modelo definido"})` : ""}\n`,
 );
 
-for (const arquivo of arquivos) {
+// O plano gratuito do Gemini aceita poucas requisições por minuto (5 em
+// alguns modelos). Espaçamos as chamadas para não estourar o limite.
+const PAUSA_ENTRE_CHAMADAS_MS = modo === "gemini" ? 13_000 : 0;
+
+for (const [i, arquivo] of arquivos.entries()) {
+  if (i > 0 && PAUSA_ENTRE_CHAMADAS_MS) {
+    await new Promise((r) => setTimeout(r, PAUSA_ENTRE_CHAMADAS_MS));
+  }
   const texto = readFileSync(join(pasta, arquivo), "utf8");
   const inicio = performance.now();
   try {

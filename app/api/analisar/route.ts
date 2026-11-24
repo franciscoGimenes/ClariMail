@@ -39,7 +39,12 @@ export async function POST(request: Request) {
     });
   } catch (erro) {
     const motivo = erro instanceof ErroAnalise ? erro.motivo : "desconhecido";
-    console.error(`[analisar] falha na análise: ${motivo}`);
+    // Só o motivo e o código HTTP (ex.: 503); nunca o texto do e-mail.
+    const status =
+      erro instanceof ErroAnalise && erro.statusHttp
+        ? ` (HTTP ${erro.statusHttp})`
+        : "";
+    console.error(`[analisar] falha na análise: ${motivo}${status}`);
     if (motivo === "limite") {
       return Response.json({ erro: MENSAGEM_LIMITE }, { status: 429 });
     }
