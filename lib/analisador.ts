@@ -40,8 +40,10 @@ export const TIMEOUT_MS = 10_000;
 /**
  * Teto de tokens da resposta: nota, veredito, resumo e até 6 indícios
  * (título, explicação de até 3 frases e trecho de até 120 caracteres).
- * O pior caso estimado fica perto de 1.100 tokens; nas fixtures a resposta
- * real ficou bem abaixo disso (ver o PR). Plano gratuito: sem folga exagerada.
+ * Nas fixtures (gemini-3.5-flash-lite, 24/11/2026) a resposta usou de 321 a
+ * 500 tokens com 3 ou 4 indícios, sem raciocínio interno: cerca de 125 tokens
+ * por indício. Com 6 indícios longos, o pior caso fica perto de 1.100.
+ * O teto só limita; tokens não usados não contam na cota do plano gratuito.
  */
 export const MAX_TOKENS_SAIDA = 1536;
 
