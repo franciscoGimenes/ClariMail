@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useEffect,
+  useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type ComponentType,
   type SVGProps,
@@ -16,6 +18,16 @@ import {
   ShieldAlertIcon,
   ShieldCheckIcon,
 } from "@/components/icons";
+import {
+  dividirEmPedacos,
+  indicesDestacados,
+  type Pedaco,
+} from "@/lib/destaques";
+import {
+  assinarAnaliseEmMemoria,
+  lerAnaliseEmMemoria,
+  limparAnaliseEmMemoria,
+} from "@/lib/emailMemoria";
 import { nivelPorNota, type Nivel } from "@/lib/nivel";
 import {
   ordenarIndicios,
@@ -95,8 +107,47 @@ export default function ResultadoView() {
     lerResultadoBruto,
     () => undefined, // no servidor ainda não sabemos
   );
+  // Texto do e-mail e trechos: só na memória da aba (somem ao recarregar).
+  const memoria = useSyncExternalStore(
+    assinarAnaliseEmMemoria,
+    lerAnaliseEmMemoria,
+    () => null,
+  );
   const tituloRef = useRef<HTMLHeadingElement>(null);
-  const resultado = bruto === undefined ? null : interpretarResultado(bruto);
+  const resultado = useMemo(
+    () => (bruto === undefined ? null : interpretarResultado(bruto)),
+    [bruto],
+  );
+  const [ativo, setAtivo] = useState<Ativo | null>(null);
+
+  // A memória só vale se for desta análise (mesma quantidade de indícios).
+  const memoriaValida =
+    memoria && resultado && memoria.trechos.length === resultado.indicios.length
+      ? memoria
+      : null;
+
+  // Devolve os trechos (da memória) aos indícios e ordena: crítico, atenção,
+  // confiável. A mesma ordem vale para a lista e para os destaques.
+  const indicios = useMemo(
+    () =>
+      resultado
+        ? ordenarIndicios(
+            resultado.indicios.map((indicio, i) => ({
+              ...indicio,
+              trecho: memoriaValida?.trechos[i] ?? null,
+            })),
+          )
+        : [],
+    [resultado, memoriaValida],
+  );
+  const pedacos = useMemo(
+    () => (memoriaValida ? dividirEmPedacos(memoriaValida.texto, indicios) : null),
+    [memoriaValida, indicios],
+  );
+  const destacados = useMemo(
+    () => (pedacos ? indicesDestacados(pedacos) : new Set<number>()),
+    [pedacos],
+  );
   const semResultado = bruto !== undefined && resultado === null;
   const temResultado = resultado !== null;
 
@@ -125,7 +176,10 @@ export default function ResultadoView() {
     <div className="flex flex-col gap-6">
       <Link
         href="/"
-        onClick={limparResultado}
+        onClick={() => {
+          limparResultado();
+          limparAnaliseEmMemoria();
+        }}
         className="inline-flex min-h-11 items-center gap-2 self-start rounded-button font-semibold text-accent hover:text-accent-hover hover:underline"
       >
         <ArrowLeftIcon className="size-5" />
@@ -160,9 +214,30 @@ export default function ResultadoView() {
         </div>
       </section>
 
-      {resultado.indicios.length > 0 ? (
-        <SecaoIndicios indicios={resultado.indicios} />
-      ) : null}
+      <div
+        className={`grid gap-6 ${indicios.length > 0 ? "lg:grid-cols-2 lg:items-start" : ""}`}
+      >
+        {indicios.length > 0 ? (
+          <SecaoIndicios
+            indicios={indicios}
+            destacados={destacados}
+            ativo={ativo?.lado === "lista" ? ativo.indice : null}
+            onVerNoEmail={(indice) => {
+              irPara(`destaque-${indice}`);
+              setAtivo({ lado: "email", indice });
+            }}
+          />
+        ) : null}
+        <MensagemAnalisada
+          pedacos={pedacos}
+          indicios={indicios}
+          ativo={ativo?.lado === "email" ? ativo.indice : null}
+          onAbrirIndicio={(indice) => {
+            irPara(`indicio-${indice}`);
+            setAtivo({ lado: "lista", indice });
+          }}
+        />
+      </div>
 
       <section
         aria-labelledby="titulo-o-que-fazer"
@@ -214,7 +289,33 @@ export const GRAVIDADE_VISUAL: Record<
   },
 };
 
-function SecaoIndicios({ indicios }: { indicios: readonly Indicio[] }) {
+type Ativo = { lado: "lista" | "email"; indice: number };
+
+/** Rola até o elemento (suave, se a pessoa não pediu menos movimento) e foca nele. */
+function irPara(id: string) {
+  const alvo = document.getElementById(id);
+  if (!alvo) return;
+  const poucoMovimento = window.matchMedia?.(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+  alvo.scrollIntoView?.({
+    behavior: poucoMovimento ? "auto" : "smooth",
+    block: "center",
+  });
+  alvo.focus({ preventScroll: true });
+}
+
+function SecaoIndicios({
+  indicios,
+  destacados,
+  ativo,
+  onVerNoEmail,
+}: {
+  indicios: readonly Indicio[];
+  destacados: ReadonlySet<number>;
+  ativo: number | null;
+  onVerNoEmail: (indice: number) => void;
+}) {
   return (
     <section
       aria-labelledby="titulo-indicios"
@@ -224,10 +325,17 @@ function SecaoIndicios({ indicios }: { indicios: readonly Indicio[] }) {
         O que encontramos
       </h2>
       <ul className="mt-2 divide-y divide-border">
-        {ordenarIndicios(indicios).map((indicio, i) => {
+        {indicios.map((indicio, i) => {
           const visual = GRAVIDADE_VISUAL[indicio.gravidade];
           return (
-            <li key={i} className="flex gap-4 py-5 last:pb-0">
+            <li
+              key={i}
+              id={`indicio-${i}`}
+              tabIndex={-1}
+              className={`-mx-3 flex gap-4 rounded-button px-3 py-5 transition-colors ${
+                ativo === i ? "bg-bg ring-3 ring-accent" : ""
+              }`}
+            >
               <span
                 aria-hidden="true"
                 className={`flex size-11 shrink-0 items-center justify-center rounded-button ${visual.caixaIcone}`}
@@ -246,11 +354,128 @@ function SecaoIndicios({ indicios }: { indicios: readonly Indicio[] }) {
                 <p className="mt-1 text-base text-ink-soft">
                   {indicio.explicacao}
                 </p>
+                {destacados.has(i) ? (
+                  <a
+                    href={`#destaque-${i}`}
+                    onClick={(evento) => {
+                      evento.preventDefault();
+                      onVerNoEmail(i);
+                    }}
+                    className="mt-1 inline-flex min-h-11 items-center rounded-button font-semibold text-accent underline underline-offset-4 hover:text-accent-hover"
+                  >
+                    Ver no e-mail
+                    <span className="sr-only">: {indicio.titulo}</span>
+                  </a>
+                ) : null}
               </div>
             </li>
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+/** Destaque no texto: cor + traço embaixo (contínuo ou tracejado), nunca só a cor. */
+const MARCA: Record<"critico" | "atencao", string> = {
+  critico:
+    "bg-danger-bg text-danger-ink border-b-[3px] border-solid border-danger",
+  atencao:
+    "bg-warning-bg text-warning-ink border-b-[3px] border-dashed border-warning-ink",
+};
+
+function MensagemAnalisada({
+  pedacos,
+  indicios,
+  ativo,
+  onAbrirIndicio,
+}: {
+  pedacos: readonly Pedaco[] | null;
+  indicios: readonly Indicio[];
+  ativo: number | null;
+  onAbrirIndicio: (indice: number) => void;
+}) {
+  const temDestaque = pedacos?.some((p) => p.tipo === "destaque") ?? false;
+  // O id do destaque vai só no primeiro pedaço de cada indício.
+  const primeiroDe = new Set<number>();
+
+  return (
+    <section
+      aria-labelledby="titulo-mensagem"
+      className="rounded-card border border-border bg-surface p-6 sm:p-8"
+    >
+      <h2 id="titulo-mensagem" className="text-2xl font-semibold text-ink">
+        Mensagem analisada
+      </h2>
+
+      {pedacos === null ? (
+        <p className="mt-3 text-base text-ink-soft">
+          O ClariMail não guarda o seu e-mail. Por isso, depois de recarregar a
+          página, os trechos destacados não aparecem mais.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-base text-ink-soft">
+            {temDestaque
+              ? "Toque em um trecho destacado para ver a explicação."
+              : "Nenhum trecho foi destacado nesta mensagem."}
+          </p>
+
+          {/* Texto montado com elementos React: o e-mail pode ter HTML ou
+              script, e aqui ele é sempre mostrado como texto. */}
+          <div className="mt-4 rounded-button border border-border bg-bg p-4 text-base leading-loose break-words whitespace-pre-wrap text-ink">
+            {pedacos.map((pedaco, k) => {
+              if (pedaco.tipo === "texto" || !pedaco.texto.trim()) {
+                return <span key={k}>{pedaco.texto}</span>;
+              }
+              const indicio = indicios[pedaco.indice];
+              const rotulo = GRAVIDADE_VISUAL[pedaco.gravidade].rotulo;
+              const primeiro = !primeiroDe.has(pedaco.indice);
+              primeiroDe.add(pedaco.indice);
+              return (
+                // O <button> se comporta como um bloco dentro do texto, então a
+                // cor e o traço ficam nele (cobrindo todas as linhas do
+                // trecho); o <mark> só dá o significado de "destacado".
+                <mark key={k} className="bg-transparent text-inherit">
+                  <button
+                    type="button"
+                    id={primeiro ? `destaque-${pedaco.indice}` : undefined}
+                    aria-label={`${rotulo}: ${indicio.titulo}`}
+                    onClick={() => onAbrirIndicio(pedaco.indice)}
+                    className={`inline-block min-h-11 cursor-pointer rounded-sm px-0.5 py-1 text-left align-baseline break-words whitespace-pre-wrap ${MARCA[pedaco.gravidade]} ${
+                      ativo === pedaco.indice ? "ring-3 ring-accent" : ""
+                    }`}
+                  >
+                    {pedaco.texto}
+                  </button>
+                </mark>
+              );
+            })}
+          </div>
+
+          {temDestaque ? (
+            <ul
+              aria-label="Legenda dos destaques"
+              className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-base text-ink"
+            >
+              <li className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={`inline-block h-5 w-8 rounded-sm ${MARCA.critico}`}
+                />
+                Crítico
+              </li>
+              <li className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={`inline-block h-5 w-8 rounded-sm ${MARCA.atencao}`}
+                />
+                Atenção
+              </li>
+            </ul>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

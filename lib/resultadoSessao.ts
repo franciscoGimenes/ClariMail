@@ -9,9 +9,21 @@ import { resultadoSchema, type Resultado } from "@/lib/resultado";
 const CHAVE = "clarimail:resultado";
 const EVENTO = "clarimail:resultado-alterado";
 
+/**
+ * Resultado sem os trechos dos indícios. Os trechos são pedaços do e-mail,
+ * então não podem ir para o sessionStorage: ficam só na memória
+ * (lib/emailMemoria.ts), junto com o texto.
+ */
+export function semTrechos(resultado: Resultado): Resultado {
+  return {
+    ...resultado,
+    indicios: resultado.indicios.map((indicio) => ({ ...indicio, trecho: null })),
+  };
+}
+
 export function salvarResultado(resultado: Resultado): void {
   try {
-    sessionStorage.setItem(CHAVE, JSON.stringify(resultado));
+    sessionStorage.setItem(CHAVE, JSON.stringify(semTrechos(resultado)));
     window.dispatchEvent(new Event(EVENTO));
   } catch {
     // Armazenamento bloqueado (ex.: navegação privada restrita): segue sem salvar.
