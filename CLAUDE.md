@@ -7,15 +7,16 @@ Projeto de faculdade da disciplina de Métodos Ágeis (Scrum).
 - **ClariMail**: plataforma web que detecta phishing em e-mails e explica, em linguagem simples, por que a mensagem é perigosa ou segura (IA Explicável).
 - **Público**: pessoas leigas em tecnologia, principalmente adultos mais velhos e idosos.
 - **Tom**: acolhedor, direto e sem jargão técnico. A interface é só em português do Brasil.
-- **Privacidade**: o conteúdo do e-mail é analisado e descartado. **Nunca salvar e nunca logar o texto do e-mail.** Isso vale para banco de dados, arquivos, `console.log`, logs de erro e serviços de terceiros, exceto a chamada de análise à Anthropic.
+- **Privacidade**: o conteúdo do e-mail é analisado e descartado. **Nunca salvar e nunca logar o texto do e-mail.** Isso vale para banco de dados, arquivos, `console.log`, logs de erro e serviços de terceiros, exceto a chamada de análise ao Google Gemini. No plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos dele, e a interface avisa isso à pessoa perto do botão Analisar.
 
 ## Stack
 
 - Next.js (App Router), TypeScript e Tailwind CSS.
-- A análise roda numa rota de API do próprio Next (server-side), que chama a API da Anthropic pelo SDK `@anthropic-ai/sdk`. A chave nunca vai para o cliente.
+- A análise roda numa rota de API do próprio Next (server-side), que chama a API gratuita do Google Gemini pelo SDK oficial `@google/genai`. A chave nunca vai para o cliente.
 - Variáveis de ambiente:
-  - `ANTHROPIC_API_KEY`
-  - `ANTHROPIC_MODEL` (padrão: `claude-haiku-5-5`)
+  - `GEMINI_API_KEY`
+  - `GEMINI_MODEL` (sem padrão fixo no código; se faltar, usa a constante `MODELO_PADRAO` de `lib/analisador.ts`)
+- Quando o limite gratuito do Gemini acaba (erro 429), a rota responde 429 com "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã."
 - Deploy na Vercel.
 
 ## Identidade visual (vem do protótipo do time)

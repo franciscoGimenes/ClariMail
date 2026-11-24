@@ -150,22 +150,23 @@ export default function EmailForm() {
         )}
       </button>
 
+      <p
+        id={privacyId}
+        className="mt-3 flex items-start gap-2 text-base text-ink-soft"
+      >
+        <LockIcon className="mt-0.5 size-5 shrink-0" />
+        <span>
+          O ClariMail não guarda o seu e-mail. Para a análise, o texto é
+          enviado ao Google Gemini. Evite colar senhas, números de cartão ou
+          documentos.
+        </span>
+      </p>
+
       {!temConteudo ? (
         <p className="mt-2 text-base text-ink-soft">
           {MENSAGENS_VALIDACAO.vazio}
         </p>
       ) : null}
-
-      <p
-        id={privacyId}
-        className="mt-4 flex items-start gap-2 text-base text-ink-soft"
-      >
-        <LockIcon className="mt-0.5 size-5 shrink-0" />
-        <span>
-          O conteúdo é analisado e descartado em seguida. Nenhum e-mail fica
-          armazenado.
-        </span>
-      </p>
     </form>
   );
 }

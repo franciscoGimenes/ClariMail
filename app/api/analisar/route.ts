@@ -12,6 +12,8 @@ export const maxDuration = 15;
 
 const MENSAGEM_FALHA =
   "Não conseguimos analisar agora, tente de novo em instantes.";
+const MENSAGEM_LIMITE =
+  "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.";
 
 export async function POST(request: Request) {
   let corpo: unknown;
@@ -38,6 +40,9 @@ export async function POST(request: Request) {
   } catch (erro) {
     const motivo = erro instanceof ErroAnalise ? erro.motivo : "desconhecido";
     console.error(`[analisar] falha na análise: ${motivo}`);
+    if (motivo === "limite") {
+      return Response.json({ erro: MENSAGEM_LIMITE }, { status: 429 });
+    }
     return Response.json(
       { erro: MENSAGEM_FALHA },
       { status: motivo === "timeout" ? 504 : 502 },
