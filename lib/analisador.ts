@@ -40,6 +40,20 @@ export const TIMEOUT_MS = 10_000;
  */
 export const MAX_TOKENS_SAIDA = 1024;
 
+export type EscopoLimite = "dia" | "minuto";
+
+/**
+ * O Gemini responde 429 tanto quando acaba a cota do dia quanto quando passa
+ * do limite por minuto. A mensagem do erro diz qual foi (ex.: "per minute",
+ * "PerDay"). Sem indicação clara, tratamos como cota do dia, o caso mais
+ * seguro para não continuar chamando o Gemini.
+ */
+export function escopoDoLimite(mensagem: string): EscopoLimite {
+  if (/per\s*day/i.test(mensagem)) return "dia";
+  if (/per\s*minute/i.test(mensagem)) return "minuto";
+  return "dia";
+}
+
 /** Erro com mensagem segura para mostrar à pessoa (sem dados do e-mail). */
 export class ErroAnalise extends Error {
   constructor(
@@ -52,6 +66,8 @@ export class ErroAnalise extends Error {
       | "api",
     /** Código HTTP devolvido pelo Gemini, quando houver (ex.: 503). */
     public readonly statusHttp?: number,
+    /** Só para "limite": se a cota do Gemini que acabou é a do dia ou a do minuto. */
+    public readonly escopoLimite?: EscopoLimite,
   ) {
     super(`Falha na análise: ${motivo}`);
     this.name = "ErroAnalise";
@@ -194,12 +210,12 @@ export async function analisarEmail(
     if (sinal.aborted || ehTimeout(erro)) throw new ErroAnalise("timeout");
     if (erro instanceof ApiError) {
       if (erro.status === 429 || /RESOURCE_EXHAUSTED/.test(erro.message)) {
-        throw new ErroAnalise("limite", erro.status);
+        throw new ErroAnalise("limite", erro.status, escopoDoLimite(erro.message));
       }
       throw new ErroAnalise("api", erro.status);
     }
     if (erro instanceof Error && /RESOURCE_EXHAUSTED/.test(erro.message)) {
-      throw new ErroAnalise("limite");
+      throw new ErroAnalise("limite", undefined, escopoDoLimite(erro.message));
     }
     throw new ErroAnalise("api");
   }

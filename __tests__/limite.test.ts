@@ -151,6 +151,30 @@ describe("limite do site", () => {
   });
 });
 
+describe("esgotar o site", () => {
+  test("esgota o site até o fim do dia e libera no dia seguinte", async () => {
+    const { r, limitador } = montar({ site: 150, ip: 10 }, "2026-11-24T15:00:00Z");
+    const reserva = await limitador.reservar("1.1.1.1");
+    await reserva.esgotarSite();
+    expect(await limitador.restantes("2.2.2.2")).toBe(0);
+    expect(await limitador.reservar("2.2.2.2")).toMatchObject({ ok: false, motivo: "limite_site" });
+
+    r.ir("2026-11-25T03:00:00Z"); // meia-noite em São Paulo
+    expect(await limitador.restantes("2.2.2.2")).toBe(10);
+  });
+
+  test("nunca diminui um contador que já passou do limite", async () => {
+    const memoria = new ArmazenamentoMemoria();
+    await memoria.reservar("s", "i", 10, 10, 60);
+    await memoria.esgotarSite("s", 1, 60);
+    expect((await memoria.ler("s", "i")).site).toBe(1);
+    await memoria.esgotarSite("s", 5, 60);
+    expect((await memoria.ler("s", "i")).site).toBe(5);
+    await memoria.esgotarSite("s", 3, 60);
+    expect((await memoria.ler("s", "i")).site).toBe(5);
+  });
+});
+
 describe("virada do dia", () => {
   test("o limite volta à meia-noite de São Paulo, não à meia-noite UTC", async () => {
     // 23:30 de 24/11 em São Paulo
@@ -228,6 +252,16 @@ describe("armazenamento Redis", () => {
     const redis = new ArmazenamentoRedis({ eval: evalMock, mget: vi.fn() } as never);
     expect(await redis.reservar("s", "i", 150, 10, 1)).toMatchObject({ ok: false, motivo: "limite_site" });
     expect(await redis.reservar("s", "i", 150, 10, 1)).toMatchObject({ ok: false, motivo: "limite_ip" });
+  });
+
+  test("esgotar o site usa SET com expiração, só se estiver abaixo do limite", async () => {
+    const evalMock = vi.fn().mockResolvedValue(1);
+    const redis = new ArmazenamentoRedis({ eval: evalMock, mget: vi.fn() } as never);
+    await redis.esgotarSite("limite:site:d", 150, EXPIRACAO_SEGUNDOS);
+    const [script, chaves, args] = evalMock.mock.calls[0];
+    expect(script).toMatch(/if .* < .* then\s+redis\.call\('SET', KEYS\[1\], ARGV\[1\], 'EX', ARGV\[2\]\)/);
+    expect(chaves).toEqual(["limite:site:d"]);
+    expect(args).toEqual(["150", String(EXPIRACAO_SEGUNDOS)]);
   });
 
   test("lê contadores ausentes como zero", async () => {

@@ -22,6 +22,8 @@ export const maxDuration = 15;
 
 const MENSAGEM_FALHA =
   "Não conseguimos analisar agora, tente de novo em instantes.";
+const MENSAGEM_OCUPADO =
+  "Muitas pessoas estão usando o ClariMail agora. Espere um minuto e tente de novo.";
 
 function respostaLimite(motivo: MotivoLimite) {
   const corpo: RespostaLimite = { motivo, mensagem: MENSAGEM_LIMITE_DIARIO };
@@ -91,12 +93,27 @@ export async function POST(request: Request) {
         : "";
     console.error(`[analisar] falha na análise: ${motivo}${status}`);
 
-    // Erro de configuração acontece antes de chamar a IA: devolve a reserva.
-    if (motivo === "configuracao") {
-      await reserva.devolver().catch(() => {});
+    const escopo = erro instanceof ErroAnalise ? erro.escopoLimite : undefined;
+
+    // Cota do DIA do Gemini acabou: o site fica esgotado até a meia-noite,
+    // para não continuar chamando o Gemini à toa.
+    if (motivo === "limite" && escopo !== "minuto") {
+      await reserva.esgotarSite().catch(() => {});
+      return respostaLimite("limite_site");
     }
-    // O 429 do próprio Gemini conta como limite do site.
-    if (motivo === "limite") return respostaLimite("limite_site");
+
+    // Devolve a análise quando o e-mail não chegou a ser analisado:
+    // configuração (a IA nem foi chamada), limite POR MINUTO do Gemini e
+    // Gemini sobrecarregado (503). Timeout e outros erros contam como gastos.
+    const naoAnalisado =
+      motivo === "configuracao" ||
+      motivo === "limite" ||
+      (erro instanceof ErroAnalise && erro.statusHttp === 503);
+    if (naoAnalisado) await reserva.devolver().catch(() => {});
+
+    if (motivo === "limite") {
+      return Response.json({ erro: MENSAGEM_OCUPADO }, { status: 503 });
+    }
     return respostaFalha(motivo === "timeout" ? 504 : 502);
   }
 }

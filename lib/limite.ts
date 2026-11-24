@@ -53,8 +53,14 @@ export interface ArmazenamentoLimite {
     limiteIp: number,
     expiracaoSegundos: number,
   ): Promise<ResultadoReserva>;
-  /** Devolve uma reserva (quando a IA acabou não sendo chamada). */
+  /** Devolve uma reserva (quando a IA não chegou a analisar o e-mail). */
   devolver(chaveSite: string, chaveIp: string): Promise<void>;
+  /** Marca o site como esgotado até o fim do dia (nunca diminui o contador). */
+  esgotarSite(
+    chaveSite: string,
+    limiteSite: number,
+    expiracaoSegundos: number,
+  ): Promise<void>;
   /** Lê os contadores (0 quando a chave não existe). */
   ler(chaveSite: string, chaveIp: string): Promise<{ site: number; ip: number }>;
 }
@@ -112,6 +118,16 @@ export class ArmazenamentoMemoria implements ArmazenamentoLimite {
     }
   }
 
+  async esgotarSite(
+    chaveSite: string,
+    limiteSite: number,
+    expiracaoSegundos: number,
+  ): Promise<void> {
+    if (this.obter(chaveSite) < limiteSite) {
+      this.definir(chaveSite, limiteSite, expiracaoSegundos);
+    }
+  }
+
   async ler(chaveSite: string, chaveIp: string) {
     return { site: this.obter(chaveSite), ip: this.obter(chaveIp) };
   }
@@ -144,6 +160,13 @@ end
 return 1
 `;
 
+const SCRIPT_ESGOTAR = `
+if tonumber(redis.call('GET', KEYS[1]) or '0') < tonumber(ARGV[1]) then
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+end
+return 1
+`;
+
 /** Upstash Redis (na Vercel, pela integração Upstash / KV). */
 export class ArmazenamentoRedis implements ArmazenamentoLimite {
   constructor(private readonly redis: Pick<Redis, "eval" | "mget">) {}
@@ -171,6 +194,18 @@ export class ArmazenamentoRedis implements ArmazenamentoLimite {
 
   async devolver(chaveSite: string, chaveIp: string): Promise<void> {
     await this.redis.eval(SCRIPT_DEVOLVER, [chaveSite, chaveIp], []);
+  }
+
+  async esgotarSite(
+    chaveSite: string,
+    limiteSite: number,
+    expiracaoSegundos: number,
+  ): Promise<void> {
+    await this.redis.eval(
+      SCRIPT_ESGOTAR,
+      [chaveSite],
+      [String(limiteSite), String(expiracaoSegundos)],
+    );
   }
 
   async ler(chaveSite: string, chaveIp: string) {
@@ -259,6 +294,13 @@ export class Limitador {
     return {
       ...resultado,
       devolver: () => this.armazenamento.devolver(chaves.site, chaves.ip),
+      /** A cota do dia do Gemini acabou: ninguém mais analisa hoje. */
+      esgotarSite: () =>
+        this.armazenamento.esgotarSite(
+          chaves.site,
+          this.limites.site,
+          EXPIRACAO_SEGUNDOS,
+        ),
     };
   }
 

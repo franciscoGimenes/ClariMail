@@ -10,6 +10,7 @@ import {
   ESQUEMA_RESPOSTA,
   escolherModelo,
   escolherModo,
+  escopoDoLimite,
   MAX_TOKENS_SAIDA,
   MODELO_PADRAO,
   TIMEOUT_MS,
@@ -86,6 +87,24 @@ describe("escolherModo", () => {
 
   test("exige a chave em produção", () => {
     expect(() => escolherModo({ NODE_ENV: "production" })).toThrow(ErroAnalise);
+  });
+});
+
+describe("escopoDoLimite (qual cota do Gemini acabou)", () => {
+  test("reconhece a cota do dia", () => {
+    expect(escopoDoLimite("quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier")).toBe("dia");
+    expect(escopoDoLimite("requests per day limit exceeded")).toBe("dia");
+  });
+
+  test("reconhece a cota por minuto", () => {
+    expect(
+      escopoDoLimite("Generate content requests per minute limit exceeded on Free Tier."),
+    ).toBe("minuto");
+    expect(escopoDoLimite("GenerateRequestsPerMinutePerProjectPerModel")).toBe("minuto");
+  });
+
+  test("sem indicação clara, trata como cota do dia", () => {
+    expect(escopoDoLimite("Quota exceeded")).toBe("dia");
   });
 });
 

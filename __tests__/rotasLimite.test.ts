@@ -94,10 +94,16 @@ describe("POST /api/analisar com limite diário", () => {
     expect(await restantes("1.1.1.1")).toBe(2);
   });
 
-  test("falha da IA depois de chamada conta como análise gasta", async () => {
+  test("timeout depois de chamar a IA conta como análise gasta", async () => {
+    generateContent.mockRejectedValue(new DOMException("timeout", "TimeoutError"));
+    expect((await analisar("1.1.1.1")).status).toBe(504);
+    expect(await restantes("1.1.1.1")).toBe(1);
+  });
+
+  test("Gemini sobrecarregado (503) não analisou: a análise é devolvida", async () => {
     generateContent.mockRejectedValue(new ApiError({ status: 503, message: "high demand" }));
     expect((await analisar("1.1.1.1")).status).toBe(502);
-    expect(await restantes("1.1.1.1")).toBe(1);
+    expect(await restantes("1.1.1.1")).toBe(2);
   });
 
   test("erro de configuração antes de chamar a IA devolve a análise", async () => {
@@ -107,14 +113,50 @@ describe("POST /api/analisar com limite diário", () => {
     expect(await restantes("1.1.1.1")).toBe(2);
   });
 
-  test("o 429 do próprio Gemini vira limite do site", async () => {
-    generateContent.mockRejectedValue(new ApiError({ status: 429, message: "quota" }));
+  test("429 do Gemini por cota do DIA: limite do site e site esgotado até a meia-noite", async () => {
+    generateContent.mockRejectedValueOnce(
+      new ApiError({
+        status: 429,
+        message:
+          '{"error":{"code":429,"message":"Quota exceeded for metric: generate_content_free_tier_requests, quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier","status":"RESOURCE_EXHAUSTED"}}',
+      }),
+    );
     const resposta = await analisar("1.1.1.1");
     expect(resposta.status).toBe(429);
     expect(await resposta.json()).toEqual({
       motivo: "limite_site",
       mensagem: MENSAGEM_LIMITE_DIARIO,
     });
+
+    // Ninguém mais analisa hoje, e o Gemini não é chamado de novo.
+    expect(await restantes("9.9.9.9")).toBe(0);
+    const outra = await analisar("9.9.9.9");
+    expect(outra.status).toBe(429);
+    expect((await outra.json()).motivo).toBe("limite_site");
+    expect(generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  test("429 do Gemini sem dizer qual cota é tratado como cota do dia", async () => {
+    generateContent.mockRejectedValue(new ApiError({ status: 429, message: "quota" }));
+    expect((await analisar("1.1.1.1")).status).toBe(429);
+    expect(await restantes("2.2.2.2")).toBe(0);
+  });
+
+  test("429 do Gemini por MINUTO: pede para esperar um minuto, sem esgotar nem descontar", async () => {
+    generateContent.mockRejectedValue(
+      new ApiError({
+        status: 429,
+        message:
+          "Quota exceeded for metric: generate_content_free_tier_requests, limit: 5, description: Generate content requests per minute limit exceeded on Free Tier.",
+      }),
+    );
+    const resposta = await analisar("1.1.1.1");
+    expect(resposta.status).toBe(503);
+    expect(await resposta.json()).toEqual({
+      erro: "Muitas pessoas estão usando o ClariMail agora. Espere um minuto e tente de novo.",
+    });
+    expect(await restantes("1.1.1.1")).toBe(2); // devolvida
+    expect(await restantes("2.2.2.2")).toBe(2); // site não esgotou
   });
 
   test("nenhum log contém o IP nem o texto do e-mail", async () => {

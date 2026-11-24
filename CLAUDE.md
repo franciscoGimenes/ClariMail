@@ -19,7 +19,7 @@ Projeto de faculdade da disciplina de Métodos Ágeis (Scrum).
   - `LIMITE_DIARIO_SITE` (padrão 150) e `LIMITE_DIARIO_IP` (padrão 10)
   - `LIMITE_SAL` (sal do hash do IP; obrigatório em produção)
   - `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` ou `KV_REST_API_URL` / `KV_REST_API_TOKEN` (Upstash Redis; obrigatório em produção, em desenvolvimento usa memória)
-- **Limite diário** (`lib/limite.ts`): limite do site e por IP, conferidos e somados de forma atômica antes de chamar a IA. O dia vira à meia-noite de America/Sao_Paulo e as chaves expiram em 48 h. Só conta a análise que chega a chamar a IA. O IP é guardado só como hash SHA-256 com sal, nunca puro, e nunca vai para logs. Esgotado o limite (ou com 429 do Gemini), a rota responde 429 com `{ motivo: "limite_site" | "limite_ip", mensagem }`, e o formulário desabilita o botão e mostra o aviso.
+- **Limite diário** (`lib/limite.ts`): limite do site e por IP, conferidos e somados de forma atômica antes de chamar a IA. O dia vira à meia-noite de America/Sao_Paulo e as chaves expiram em 48 h. Só conta a análise que chega a chamar a IA. O IP é guardado só como hash SHA-256 com sal, nunca puro, e nunca vai para logs. Esgotado o limite, a rota responde 429 com `{ motivo: "limite_site" | "limite_ip", mensagem }`, e o formulário desabilita o botão e mostra o aviso. 429 do Gemini pela cota do dia esgota o site até a meia-noite; pelo limite por minuto, responde 503 "espere um minuto" e devolve a análise. 503 do Gemini também devolve a análise.
 - Deploy na Vercel.
 
 ## Identidade visual (vem do protótipo do time)
