@@ -5,7 +5,11 @@ import {
   Type,
   type Schema,
 } from "@google/genai";
-import { montarMensagemUsuario, PROMPT_SISTEMA } from "@/lib/prompt";
+import {
+  anexarSinaisLinks,
+  montarMensagemUsuario,
+  PROMPT_SISTEMA,
+} from "@/lib/prompt";
 import {
   GRAVIDADES,
   MAX_INDICIOS,
@@ -182,6 +186,7 @@ export function _reiniciarCliente(): void {
 async function analisarComGemini(
   texto: string,
   sinal: AbortSignal,
+  sinaisLinks?: string,
 ): Promise<Resultado> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new ErroAnalise("configuracao");
@@ -189,7 +194,7 @@ async function analisarComGemini(
 
   const resposta = await obterCliente(apiKey).models.generateContent({
     model: modelo,
-    contents: montarMensagemUsuario(texto),
+    contents: anexarSinaisLinks(montarMensagemUsuario(texto), sinaisLinks),
     config: {
       systemInstruction: PROMPT_SISTEMA,
       responseMimeType: "application/json",
@@ -234,15 +239,20 @@ function ehTimeout(erro: unknown): boolean {
   return nome === "TimeoutError" || nome === "AbortError";
 }
 
+/**
+ * @param sinaisLinks resumo da verificação dos links (lib/links.ts), enviado
+ *   ao Gemini fora do bloco do e-mail para a nota e o resumo levarem em conta.
+ */
 export async function analisarEmail(
   texto: string,
   modo: ModoAnalise = escolherModo(),
+  sinaisLinks?: string,
 ): Promise<Resultado> {
   if (modo === "simulacao") return analisarSimulado(texto);
 
   const sinal = AbortSignal.timeout(TIMEOUT_MS);
   try {
-    return await analisarComGemini(texto, sinal);
+    return await analisarComGemini(texto, sinal, sinaisLinks);
   } catch (erro) {
     if (erro instanceof ErroAnalise) throw erro;
     // Se os 10 s estouraram, é timeout, qualquer que seja o formato do erro
