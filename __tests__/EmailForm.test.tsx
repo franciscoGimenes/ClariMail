@@ -136,7 +136,27 @@ test("em erro da API mostra mensagem amigável e não navega", async () => {
   expect(botao()).toHaveProperty("disabled", false);
 });
 
-test("mostra a nota de privacidade", () => {
+test("mostra a nota de privacidade logo depois do botão Analisar", () => {
   render(<EmailForm />);
-  expect(screen.getByText(/analisado e descartado em seguida/)).toBeDefined();
+  const nota = screen.getByText(
+    "O ClariMail não guarda o seu e-mail. Para a análise, o texto é enviado ao Google Gemini. Evite colar senhas, números de cartão ou documentos.",
+  );
+  expect(botao().nextElementSibling).toBe(nota.parentElement);
+  expect(screen.queryByText(/Nenhum e-mail fica armazenado/)).toBeNull();
+});
+
+test("no limite diário mostra a mensagem do servidor", async () => {
+  const mensagem =
+    "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ erro: mensagem }, { status: 429 })),
+  );
+  render(<EmailForm />);
+  fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
+  fireEvent.click(botao());
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toContain(mensagem),
+  );
+  expect(push).not.toHaveBeenCalled();
 });

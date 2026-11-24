@@ -2,7 +2,7 @@
  * Roda o analisador nas fixtures de tests/fixtures/emails e mostra a nota
  * e o veredito de cada uma.
  *
- *   npm run fixtures            -> usa a Anthropic se ANTHROPIC_API_KEY existir
+ *   npm run fixtures            -> usa o Gemini se GEMINI_API_KEY existir
  *                                  (lida do .env.local), senão a simulação
  *   npm run fixtures -- --sim   -> força a simulação
  *
@@ -10,7 +10,12 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { analisarEmail, ErroAnalise, type ModoAnalise } from "../lib/analisador";
+import {
+  analisarEmail,
+  ErroAnalise,
+  MODELO_PADRAO,
+  type ModoAnalise,
+} from "../lib/analisador";
 
 try {
   process.loadEnvFile(".env.local");
@@ -19,18 +24,25 @@ try {
 }
 
 const modo: ModoAnalise =
-  process.argv.includes("--sim") || !process.env.ANTHROPIC_API_KEY
+  process.argv.includes("--sim") || !process.env.GEMINI_API_KEY
     ? "simulacao"
-    : "anthropic";
+    : "gemini";
 
 const pasta = join(process.cwd(), "tests", "fixtures", "emails");
 const arquivos = readdirSync(pasta).filter((f) => f.endsWith(".txt")).sort();
 
 console.log(
-  `Modo: ${modo}${modo === "anthropic" ? ` (${process.env.ANTHROPIC_MODEL || "claude-haiku-5-5"})` : ""}\n`,
+  `Modo: ${modo}${modo === "gemini" ? ` (${process.env.GEMINI_MODEL || MODELO_PADRAO || "sem modelo definido"})` : ""}\n`,
 );
 
-for (const arquivo of arquivos) {
+// O plano gratuito do Gemini aceita poucas requisições por minuto (5 em
+// alguns modelos). Espaçamos as chamadas para não estourar o limite.
+const PAUSA_ENTRE_CHAMADAS_MS = modo === "gemini" ? 13_000 : 0;
+
+for (const [i, arquivo] of arquivos.entries()) {
+  if (i > 0 && PAUSA_ENTRE_CHAMADAS_MS) {
+    await new Promise((r) => setTimeout(r, PAUSA_ENTRE_CHAMADAS_MS));
+  }
   const texto = readFileSync(join(pasta, arquivo), "utf8");
   const inicio = performance.now();
   try {

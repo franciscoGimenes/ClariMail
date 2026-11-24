@@ -12,6 +12,8 @@ export const maxDuration = 15;
 
 const MENSAGEM_FALHA =
   "Não conseguimos analisar agora, tente de novo em instantes.";
+const MENSAGEM_LIMITE =
+  "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.";
 
 export async function POST(request: Request) {
   let corpo: unknown;
@@ -37,7 +39,15 @@ export async function POST(request: Request) {
     });
   } catch (erro) {
     const motivo = erro instanceof ErroAnalise ? erro.motivo : "desconhecido";
-    console.error(`[analisar] falha na análise: ${motivo}`);
+    // Só o motivo e o código HTTP (ex.: 503); nunca o texto do e-mail.
+    const status =
+      erro instanceof ErroAnalise && erro.statusHttp
+        ? ` (HTTP ${erro.statusHttp})`
+        : "";
+    console.error(`[analisar] falha na análise: ${motivo}${status}`);
+    if (motivo === "limite") {
+      return Response.json({ erro: MENSAGEM_LIMITE }, { status: 429 });
+    }
     return Response.json(
       { erro: MENSAGEM_FALHA },
       { status: motivo === "timeout" ? 504 : 502 },

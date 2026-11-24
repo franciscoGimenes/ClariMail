@@ -2,7 +2,7 @@ import { normalizarResultado, type Resultado } from "@/lib/resultado";
 
 /**
  * Analisador de SIMULAÇÃO, usado só em desenvolvimento quando não há
- * ANTHROPIC_API_KEY. Regras simples, apenas para o time testar o fluxo.
+ * GEMINI_API_KEY. Regras simples, apenas para o time testar o fluxo.
  * Não é uma análise de verdade.
  */
 
