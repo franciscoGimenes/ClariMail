@@ -10,6 +10,7 @@ import {
   ESQUEMA_RESPOSTA,
   escolherModelo,
   escolherModo,
+  escopoDoLimite,
   MAX_TOKENS_SAIDA,
   MODELO_PADRAO,
   TIMEOUT_MS,
@@ -22,6 +23,8 @@ import {
 } from "@/lib/resultado";
 import { analisarSimulado } from "@/lib/simulador";
 import { POST } from "@/app/api/analisar/route";
+import { _definirLimitador } from "@/lib/limite";
+import { MENSAGEM_LIMITE_DIARIO } from "@/lib/limiteTextos";
 
 // Cliente do Gemini falso: guarda as opções do construtor e a chamada.
 const { generateContent, opcoesCliente } = vi.hoisted(() => ({
@@ -62,6 +65,7 @@ beforeEach(() => {
   generateContent.mockReset();
   opcoesCliente.length = 0;
   _reiniciarCliente();
+  _definirLimitador(null); // limitador novo em memória a cada teste
   vi.stubEnv("GEMINI_API_KEY", "chave-de-teste");
   vi.stubEnv("GEMINI_MODEL", "modelo-flash-de-teste");
 });
@@ -83,6 +87,24 @@ describe("escolherModo", () => {
 
   test("exige a chave em produção", () => {
     expect(() => escolherModo({ NODE_ENV: "production" })).toThrow(ErroAnalise);
+  });
+});
+
+describe("escopoDoLimite (qual cota do Gemini acabou)", () => {
+  test("reconhece a cota do dia", () => {
+    expect(escopoDoLimite("quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier")).toBe("dia");
+    expect(escopoDoLimite("requests per day limit exceeded")).toBe("dia");
+  });
+
+  test("reconhece a cota por minuto", () => {
+    expect(
+      escopoDoLimite("Generate content requests per minute limit exceeded on Free Tier."),
+    ).toBe("minuto");
+    expect(escopoDoLimite("GenerateRequestsPerMinutePerProjectPerModel")).toBe("minuto");
+  });
+
+  test("sem indicação clara, trata como cota do dia", () => {
+    expect(escopoDoLimite("Quota exceeded")).toBe("dia");
   });
 });
 
@@ -244,7 +266,7 @@ describe("rota POST /api/analisar", () => {
     });
   }
 
-  test("limite do Gemini responde 429 com a mensagem do limite diário", async () => {
+  test("limite do Gemini responde 429 como limite do site", async () => {
     const erroLog = vi.spyOn(console, "error").mockImplementation(() => {});
     generateContent.mockRejectedValue(
       new ApiError({ status: 429, message: "Quota exceeded" }),
@@ -253,7 +275,8 @@ describe("rota POST /api/analisar", () => {
     const resposta = await POST(requisicao(EMAIL));
     expect(resposta.status).toBe(429);
     expect(await resposta.json()).toEqual({
-      erro: "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.",
+      motivo: "limite_site",
+      mensagem: MENSAGEM_LIMITE_DIARIO,
     });
     // O log registra só o motivo, nunca o texto do e-mail.
     expect(erroLog).toHaveBeenCalledWith(

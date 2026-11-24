@@ -1,8 +1,12 @@
 "use client";
 
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AlertIcon, ArrowRightIcon, LockIcon } from "@/components/icons";
+import {
+  MENSAGEM_LIMITE_DIARIO,
+  textoRestantes,
+} from "@/lib/limiteTextos";
 import { resultadoSchema } from "@/lib/resultado";
 import { salvarResultado } from "@/lib/resultadoSessao";
 import {
@@ -22,19 +26,44 @@ export default function EmailForm() {
   const [emailText, setEmailText] = useState("");
   const [analisando, setAnalisando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Análises que ainda restam hoje (null = ainda não sabemos).
+  const [restantes, setRestantes] = useState<number | null>(null);
 
   const fieldId = useId();
   const hintId = useId();
   const counterId = useId();
   const avisoId = useId();
   const privacyId = useId();
+  const limiteId = useId();
 
   const temConteudo = emailText.trim().length > 0;
   const noLimite = emailText.length >= MAX_CARACTERES;
+  const esgotado = restantes === 0;
+
+  // Consulta quantas análises ainda restam hoje para esta pessoa.
+  useEffect(() => {
+    const controle = new AbortController();
+    fetch("/api/limite", { signal: controle.signal, cache: "no-store" })
+      .then((resposta) => (resposta.ok ? resposta.json() : null))
+      .then((dados: unknown) => {
+        if (
+          dados &&
+          typeof dados === "object" &&
+          "restantes" in dados &&
+          typeof dados.restantes === "number"
+        ) {
+          setRestantes(dados.restantes);
+        }
+      })
+      .catch(() => {
+        // Sem a informação, o formulário segue funcionando normalmente.
+      });
+    return () => controle.abort();
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (analisando) return;
+    if (analisando || esgotado) return;
 
     // Valida no navegador primeiro: texto vazio ou curto não chama a IA.
     const entrada = validarEntrada({ texto: emailText });
@@ -53,6 +82,12 @@ export default function EmailForm() {
         signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
       });
       const dados: unknown = await resposta.json().catch(() => null);
+
+      // Limite diário esgotado (do site, da pessoa ou do próprio Gemini).
+      if (resposta.status === 429) {
+        setRestantes(0);
+        return;
+      }
 
       if (!resposta.ok) {
         const erro =
@@ -132,9 +167,30 @@ export default function EmailForm() {
         </p>
       ) : null}
 
+      {restantes !== null && !esgotado ? (
+        <p className="mt-3 text-base text-ink-soft">
+          {textoRestantes(restantes)}
+        </p>
+      ) : null}
+
+      {/* Região viva sempre presente, para o leitor de tela anunciar o aviso
+          quando ele aparecer. */}
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {esgotado ? (
+          <p
+            id={limiteId}
+            className="mt-3 flex items-start gap-3 rounded-button border border-warning-ink bg-warning-bg px-4 py-3 text-base text-warning-ink"
+          >
+            <AlertIcon className="mt-0.5 size-6 shrink-0" />
+            <span>{MENSAGEM_LIMITE_DIARIO}</span>
+          </p>
+        ) : null}
+      </div>
+
       <button
         type="submit"
-        disabled={!temConteudo || analisando}
+        disabled={!temConteudo || analisando || esgotado}
+        aria-describedby={esgotado ? limiteId : undefined}
         className="mt-4 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-button bg-accent px-6 text-lg font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-border disabled:text-ink-soft"
       >
         {analisando ? (
@@ -162,7 +218,7 @@ export default function EmailForm() {
         </span>
       </p>
 
-      {!temConteudo ? (
+      {!temConteudo && !esgotado ? (
         <p className="mt-2 text-base text-ink-soft">
           {MENSAGENS_VALIDACAO.vazio}
         </p>
