@@ -17,6 +17,9 @@ import {
 } from "@/lib/analisador";
 import { montarMensagemUsuario, PROMPT_SISTEMA } from "@/lib/prompt";
 import {
+  GRAVIDADES,
+  indicioModeloSchema,
+  indicioSchema,
   respostaModeloSchema,
   resultadoSchema,
   VEREDITOS,
@@ -132,13 +135,63 @@ describe("esquema de resposta do Gemini", () => {
     );
     expect(ESQUEMA_RESPOSTA.properties?.veredito.enum).toEqual([...VEREDITOS]);
   });
+
+  test("pede de 2 a 6 indícios com os campos do indicioSchema, sem 'origem'", () => {
+    const indicios = ESQUEMA_RESPOSTA.properties?.indicios;
+    expect(indicios?.minItems).toBe("2");
+    expect(indicios?.maxItems).toBe("6");
+    const campos = Object.keys(indicios?.items?.properties ?? {}).sort();
+    expect(campos).toEqual(Object.keys(indicioModeloSchema.shape).sort());
+    expect(campos).not.toContain("origem");
+    expect(indicios?.items?.required?.slice().sort()).toEqual(campos);
+    expect(indicios?.items?.properties?.gravidade.enum).toEqual([...GRAVIDADES]);
+    expect(indicios?.items?.properties?.trecho.nullable).toBe(true);
+  });
+
+  test("os indícios vêm antes da nota (o modelo junta as evidências primeiro)", () => {
+    expect(ESQUEMA_RESPOSTA.propertyOrdering?.[0]).toBe("indicios");
+  });
+
+  test("o limite de tokens cabe 6 indícios no pior caso sem folga exagerada", () => {
+    expect(MAX_TOKENS_SAIDA).toBeGreaterThanOrEqual(1100);
+    expect(MAX_TOKENS_SAIDA).toBeLessThanOrEqual(2048);
+  });
+});
+
+describe("prompt: seção Indícios", () => {
+  test("explica gravidades, sinais de confiança, trecho exato e linguagem", () => {
+    expect(PROMPT_SISTEMA).toContain("## Indícios");
+    for (const g of GRAVIDADES) expect(PROMPT_SISTEMA).toContain(`"${g}"`);
+    expect(PROMPT_SISTEMA).toMatch(/e-mail seguro, os indícios são os sinais de confiança/);
+    expect(PROMPT_SISTEMA).toMatch(/LETRA POR LETRA/);
+    expect(PROMPT_SISTEMA).toMatch(/use null/);
+    expect(PROMPT_SISTEMA).toMatch(/nada de "phishing", "domínio", "URL"/);
+  });
 });
 
 describe("analisarEmail com o Gemini (cliente mockado)", () => {
   test("sucesso: envia prompt, esquema e limites certos e devolve o resultado", async () => {
     generateContent.mockResolvedValue(
       respostaGemini(
-        JSON.stringify({ nota: 88, veredito: "phishing", resumo: "É golpe." }),
+        JSON.stringify({
+          indicios: [
+            {
+              titulo: "Pede sua senha",
+              explicacao: "Bancos não pedem senha por e-mail.",
+              gravidade: "critico",
+              trecho: "Confirme sua senha agora.",
+            },
+            {
+              titulo: "Trecho inventado",
+              explicacao: "Este trecho não existe no e-mail.",
+              gravidade: "atencao",
+              trecho: "clique aqui para ganhar",
+            },
+          ],
+          nota: 88,
+          veredito: "phishing",
+          resumo: "É golpe.",
+        }),
       ),
     );
 
@@ -147,7 +200,22 @@ describe("analisarEmail com o Gemini (cliente mockado)", () => {
       veredito: "phishing",
       nota: 88,
       resumo: "É golpe.",
-      indicios: [],
+      indicios: [
+        {
+          titulo: "Pede sua senha",
+          explicacao: "Bancos não pedem senha por e-mail.",
+          gravidade: "critico",
+          trecho: "Confirme sua senha agora.",
+          origem: "ia",
+        },
+        {
+          titulo: "Trecho inventado",
+          explicacao: "Este trecho não existe no e-mail.",
+          gravidade: "atencao",
+          trecho: null,
+          origem: "ia",
+        },
+      ],
     });
 
     const [pedido] = generateContent.mock.calls[0];
@@ -336,6 +404,21 @@ describe("analisador de simulação com as fixtures", () => {
     expect(resultadoSchema.safeParse(resultado).success).toBe(true);
     if (arquivo.startsWith("phishing")) {
       expect(resultado.veredito).not.toBe("seguro");
+    }
+  });
+
+  test.each(arquivos)("%s traz indícios válidos, com trechos copiados do e-mail", (arquivo) => {
+    const texto = readFileSync(join(pasta, arquivo), "utf8");
+    const { indicios, veredito } = analisarSimulado(texto);
+    expect(indicios.length).toBeGreaterThanOrEqual(1);
+    for (const indicio of indicios) {
+      expect(indicioSchema.safeParse(indicio).success).toBe(true);
+      if (indicio.trecho) expect(texto).toContain(indicio.trecho);
+    }
+    if (veredito === "seguro") {
+      expect(indicios.some((i) => i.gravidade === "confiavel")).toBe(true);
+    } else {
+      expect(indicios[0].gravidade).toBe("critico");
     }
   });
 });
