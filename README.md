@@ -52,8 +52,12 @@ Abra [http://localhost:3000](http://localhost:3000) no navegador.
 |---|---|---|
 | `GEMINI_API_KEY` | Sim | Chave da API do Google Gemini (Google AI Studio). Fica só no servidor e nunca é enviada ao navegador. |
 | `GEMINI_MODEL` | Sim, se `MODELO_PADRAO` estiver vazio | Nome do modelo Flash usado na análise. Sem ela, vale a constante `MODELO_PADRAO` de `lib/analisador.ts`. |
+| `LIMITE_DIARIO_SITE` | Não | Máximo de análises do site inteiro por dia. Padrão: `150`. |
+| `LIMITE_DIARIO_IP` | Não | Máximo de análises por pessoa (IP) por dia. Padrão: `10`. |
+| `LIMITE_SAL` | Sim, em produção | Sal do hash SHA-256 do IP. O IP nunca é guardado puro. Gere com `openssl rand -hex 32`. |
+| `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` | Sim, em produção | Upstash Redis, onde ficam os contadores do limite. Também valem `KV_REST_API_URL` e `KV_REST_API_TOKEN`, os nomes que a integração Upstash da Vercel cria. |
 
-**Limite do plano gratuito:** quando a cota diária do Gemini acaba, a análise responde "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã."
+**Limite diário:** para não estourar a cota gratuita do Gemini, o ClariMail aceita até `LIMITE_DIARIO_SITE` análises por dia no site e `LIMITE_DIARIO_IP` por pessoa. O dia vira à meia-noite de São Paulo (America/Sao_Paulo). Só conta a análise que chega a chamar a IA: texto vazio, curto ou inválido não gasta. Quando o limite acaba, ou quando o próprio Gemini responde 429, o botão fica desabilitado e a tela avisa que o serviço volta amanhã. `GET /api/limite` informa quantas análises ainda restam para a pessoa. Em desenvolvimento, sem Upstash, os contadores ficam em memória e zeram quando o servidor reinicia.
 
 **Sem chave em desenvolvimento:** se a `GEMINI_API_KEY` não estiver definida, o `npm run dev` usa um **analisador de simulação** com regras simples (palavras de urgência, pedido de senha/CPF, links). Ele serve só para testar o fluxo. O resumo aparece com o prefixo "[Simulação]". Em produção (incluindo `npm start`), a chave é obrigatória.
 

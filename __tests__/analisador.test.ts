@@ -22,6 +22,8 @@ import {
 } from "@/lib/resultado";
 import { analisarSimulado } from "@/lib/simulador";
 import { POST } from "@/app/api/analisar/route";
+import { _definirLimitador } from "@/lib/limite";
+import { MENSAGEM_LIMITE_DIARIO } from "@/lib/limiteTextos";
 
 // Cliente do Gemini falso: guarda as opções do construtor e a chamada.
 const { generateContent, opcoesCliente } = vi.hoisted(() => ({
@@ -62,6 +64,7 @@ beforeEach(() => {
   generateContent.mockReset();
   opcoesCliente.length = 0;
   _reiniciarCliente();
+  _definirLimitador(null); // limitador novo em memória a cada teste
   vi.stubEnv("GEMINI_API_KEY", "chave-de-teste");
   vi.stubEnv("GEMINI_MODEL", "modelo-flash-de-teste");
 });
@@ -244,7 +247,7 @@ describe("rota POST /api/analisar", () => {
     });
   }
 
-  test("limite do Gemini responde 429 com a mensagem do limite diário", async () => {
+  test("limite do Gemini responde 429 como limite do site", async () => {
     const erroLog = vi.spyOn(console, "error").mockImplementation(() => {});
     generateContent.mockRejectedValue(
       new ApiError({ status: 429, message: "Quota exceeded" }),
@@ -253,7 +256,8 @@ describe("rota POST /api/analisar", () => {
     const resposta = await POST(requisicao(EMAIL));
     expect(resposta.status).toBe(429);
     expect(await resposta.json()).toEqual({
-      erro: "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.",
+      motivo: "limite_site",
+      mensagem: MENSAGEM_LIMITE_DIARIO,
     });
     // O log registra só o motivo, nunca o texto do e-mail.
     expect(erroLog).toHaveBeenCalledWith(

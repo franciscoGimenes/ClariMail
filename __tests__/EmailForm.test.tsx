@@ -7,6 +7,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import EmailForm from "@/components/EmailForm";
+import { MENSAGEM_LIMITE_DIARIO } from "@/lib/limiteTextos";
 import { MAX_CARACTERES, MENSAGENS_VALIDACAO } from "@/lib/validacao";
 
 const push = vi.fn();
@@ -15,9 +16,39 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 const EMAIL_VALIDO =
   "De: banco@exemplo.test\nSua conta foi bloqueada, confirme sua senha agora.";
 
+/**
+ * fetch falso que responde conforme a rota. Por padrão: 5 análises restantes
+ * em /api/limite; /api/analisar precisa ser definida pelo teste.
+ */
+function simularFetch({
+  restantes = 5 as number | null,
+  analisar = (): Promise<Response> => Promise.reject(new Error("sem resposta")),
+} = {}) {
+  const fetchMock = vi.fn((url: string) => {
+    if (url === "/api/limite") {
+      return Promise.resolve(
+        restantes === null
+          ? Response.json({ erro: "x" }, { status: 503 })
+          : Response.json({ restantes }),
+      );
+    }
+    return analisar();
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return {
+    fetchMock,
+    chamadasAnalisar: () =>
+      fetchMock.mock.calls.filter(([url]) => url === "/api/analisar") as unknown as [
+        string,
+        RequestInit,
+      ][],
+  };
+}
+
 beforeEach(() => {
   push.mockReset();
   sessionStorage.clear();
+  simularFetch();
 });
 afterEach(() => {
   cleanup();
@@ -64,9 +95,8 @@ test("mostra o contador e limita a 10.000 caracteres", () => {
   ).toBeDefined();
 });
 
-test("texto curto mostra aviso e não chama a API", () => {
-  const fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
+test("texto curto mostra aviso e não chama a API de análise", () => {
+  const { chamadasAnalisar } = simularFetch();
   render(<EmailForm />);
 
   fireEvent.change(campo(), { target: { value: "oi, tudo bem?" } });
@@ -75,7 +105,7 @@ test("texto curto mostra aviso e não chama a API", () => {
   expect(screen.getByRole("alert").textContent).toContain(
     MENSAGENS_VALIDACAO.curto,
   );
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(chamadasAnalisar()).toHaveLength(0);
 });
 
 test("envia, mostra 'Analisando…', guarda só o resultado e vai para /resultado", async () => {
@@ -86,10 +116,9 @@ test("envia, mostra 'Analisando…', guarda só o resultado e vai para /resultad
     indicios: [],
   };
   let responder!: (r: Response) => void;
-  const fetchMock = vi.fn(
-    () => new Promise<Response>((resolve) => (responder = resolve)),
-  );
-  vi.stubGlobal("fetch", fetchMock);
+  const { chamadasAnalisar } = simularFetch({
+    analisar: () => new Promise<Response>((resolve) => (responder = resolve)),
+  });
   render(<EmailForm />);
 
   fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
@@ -98,10 +127,7 @@ test("envia, mostra 'Analisando…', guarda só o resultado e vai para /resultad
   await waitFor(() => expect(botao().textContent).toContain("Analisando…"));
   expect(botao()).toHaveProperty("disabled", true);
 
-  const [url, init] = fetchMock.mock.calls[0] as unknown as [
-    string,
-    RequestInit,
-  ];
+  const [[url, init]] = chamadasAnalisar();
   expect(url).toBe("/api/analisar");
   expect(JSON.parse(String(init.body))).toEqual({ texto: EMAIL_VALIDO });
 
@@ -114,15 +140,13 @@ test("envia, mostra 'Analisando…', guarda só o resultado e vai para /resultad
 });
 
 test("em erro da API mostra mensagem amigável e não navega", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
+  simularFetch({
+    analisar: async () =>
       Response.json(
         { erro: "Não conseguimos analisar agora, tente de novo em instantes." },
         { status: 504 },
       ),
-    ),
-  );
+  });
   render(<EmailForm />);
   fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
   fireEvent.click(botao());
@@ -145,18 +169,79 @@ test("mostra a nota de privacidade logo depois do botão Analisar", () => {
   expect(screen.queryByText(/Nenhum e-mail fica armazenado/)).toBeNull();
 });
 
-test("no limite diário mostra a mensagem do servidor", async () => {
-  const mensagem =
-    "O ClariMail atingiu o limite de análises de hoje. Tente de novo amanhã.";
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => Response.json({ erro: mensagem }, { status: 429 })),
-  );
+// ---------------------------------------------------------------------------
+// Limite diário
+// ---------------------------------------------------------------------------
+
+test("mostra de forma discreta quantas análises ainda restam hoje", async () => {
+  simularFetch({ restantes: 7 });
+  render(<EmailForm />);
+  expect(
+    await screen.findByText("Você ainda pode fazer 7 análises hoje."),
+  ).toBeDefined();
+});
+
+test("usa o singular quando resta 1 análise", async () => {
+  simularFetch({ restantes: 1 });
+  render(<EmailForm />);
+  expect(
+    await screen.findByText("Você ainda pode fazer 1 análise hoje."),
+  ).toBeDefined();
+});
+
+test("com 0 restantes: botão desabilitado e aviso acolhedor na região viva", async () => {
+  simularFetch({ restantes: 0 });
   render(<EmailForm />);
   fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
-  fireEvent.click(botao());
-  await waitFor(() =>
-    expect(screen.getByRole("alert").textContent).toContain(mensagem),
+
+  const regiao = screen.getByRole("status");
+  expect(regiao.getAttribute("aria-live")).toBe("polite");
+  await waitFor(() => expect(regiao.textContent).toBe(MENSAGEM_LIMITE_DIARIO));
+
+  // Aviso com ícone, e o botão desabilitado mesmo com texto no campo.
+  expect(regiao.querySelector("svg")).not.toBeNull();
+  expect(botao()).toHaveProperty("disabled", true);
+  expect(botao().getAttribute("aria-describedby")).toBe(
+    regiao.querySelector("p")?.id,
   );
+  expect(screen.queryByText(/Você ainda pode fazer/)).toBeNull();
+});
+
+test("a região viva já existe vazia antes do aviso (para ser anunciada)", () => {
+  render(<EmailForm />);
+  expect(screen.getByRole("status").textContent).toBe("");
+});
+
+test("se a API responder 429, desabilita o botão e mostra o aviso", async () => {
+  const { chamadasAnalisar } = simularFetch({
+    restantes: 3,
+    analisar: async () =>
+      Response.json(
+        { motivo: "limite_site", mensagem: MENSAGEM_LIMITE_DIARIO },
+        { status: 429 },
+      ),
+  });
+  render(<EmailForm />);
+  await screen.findByText("Você ainda pode fazer 3 análises hoje.");
+  fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
+  fireEvent.click(botao());
+
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe(MENSAGEM_LIMITE_DIARIO),
+  );
+  expect(botao()).toHaveProperty("disabled", true);
   expect(push).not.toHaveBeenCalled();
+
+  // Novo clique não chama a API de novo.
+  fireEvent.click(botao());
+  expect(chamadasAnalisar()).toHaveLength(1);
+});
+
+test("se não der para consultar o limite, o formulário segue funcionando", async () => {
+  simularFetch({ restantes: null });
+  render(<EmailForm />);
+  fireEvent.change(campo(), { target: { value: EMAIL_VALIDO } });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(botao()).toHaveProperty("disabled", false);
+  expect(screen.queryByText(/Você ainda pode fazer/)).toBeNull();
 });
